@@ -1,38 +1,42 @@
 from flask import Flask, request, jsonify
-import joblib
-import numpy as np
+import pandas as pd
+import pickle
 
-# Load the trained model
-model = joblib.load('car_price_model.pkl')
-
-# Define feature column order used in training
-feature_columns = [
-'Year', 'Mileage', 'EngineV', 'Brand_BMW',
-    'Brand_Mercedes-Benz', 'Brand_Mitsubishi',
-    'Brand_Renault', 'Brand_Toyota', 'Brand_Volkswagen',
-    'Body_hatch', 'Body_other', 'Body_sedan', 'Body_vagon',
-    'Body_van', 'Engine Type_Gas', 'Engine Type_Other',
-    'Engine Type_Petrol', 'Registration_yes'
-    # 👈 Your list may be longer or different
-]
-
-
-# Initialize Flask app
 app = Flask(__name__)
+
+# Load model
+with open("car_price_model.pkl", "rb") as f:
+    model = pickle.load(f)
+
+# Load training columns used after one-hot encoding
+with open("model_columns.pkl", "rb") as f:
+    training_columns = pickle.load(f)
+
+
+@app.route('/')
+def home():
+    return "Car Price Prediction API is running."
 
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    data = request.get_json()
+    try:
+        # Parse input
+        data = request.get_json(force=True)
+        input_df = pd.DataFrame([data])
 
-    # Convert incoming JSON to ordered feature vector
-    input_data = [data.get(col, 0) for col in feature_columns]
-    input_array = np.array(input_data).reshape(1, -1)
+        # One-hot encode like during training
+        input_df = pd.get_dummies(input_df)
 
-    # Predict the price
-    predicted_price = model.predict(input_array)[0]
+        # Align with training columns
+        input_df = input_df.reindex(columns=training_columns, fill_value=0)
 
-    return jsonify({'predicted_price': round(predicted_price, 2)})
+        # Predict
+        prediction = model.predict(input_df)[0]
+        return jsonify({'predicted_price': round(prediction, 2)})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
